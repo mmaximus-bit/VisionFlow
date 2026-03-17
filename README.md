@@ -1,9 +1,16 @@
 # VisionFlow
 
-👁️ VisionFlow: Touchless UX & Privacy AIO VisionFlow é uma plataforma experimental de interface web desenvolvida para o projeto "AI Experience". O objetivo é redefinir a interação humano-computador (HCI) ao transformar a webcam em um sensor inteligente que entende gestos e intenções, garantindo acessibilidade e privacidade sem o uso de periféricos físicos.
+# 👁️ VisionFlow: Touchless UX & Privacy AI
 
-💡 A SoluçãoO projeto resolve dois problemas principais de UX:Interação Sem Contato: Navegação fluida em telas onde o toque é indesejado (ex: ambientes médicos, quiosques públicos ou limitações motoras).Segurança de Dados: Proteção automática de informações sensíveis contra olhares curiosos em ambientes compartilhados.
+O **VisionFlow** é um projeto de interface web consciente desenvolvido para a trilha "AI Experience". Ele utiliza Visão Computacional para eliminar a necessidade de periféricos físicos, focando em **Acessibilidade** e **Segurança de Dados**.
 
-🚀 Funcionalidades PrincipaisAir-Cursor Control: Controle do cursor do mouse através do rastreamento em tempo real do dedo indicador.Gestual Click: Reconhecimento do gesto de "pinça" (polegar + indicador) para acionar eventos de clique.Smart Privacy (Auto-Blur): Monitoramento do olhar (Gaze Tracking). Se o usuário desvia o olhar da tela, o CSS da página aplica instantaneamente um efeito de desfoque (blur).Interface Responsiva: Frontend adaptado para responder aos comandos enviados via backend em alta velocidade.
+## 💡 A Solução
+O projeto utiliza a câmera do dispositivo para processar dois fluxos simultâneos de IA:
+1. **Navegação Sem Toque:** Controle do cursor e cliques através do rastreamento de pontos da mão.
+2. **Privacidade Adaptativa:** Monitoramento de presença facial que aplica desfoque (*blur*) automático na tela quando o usuário não está olhando ou se ausenta.
 
-🛠️ Stack TecnológicaO projeto foi construído utilizando uma arquitetura que integra o processamento pesado de IA com a agilidade do desenvolvimento Web:CamadaTecnologiaFunçãoIA & CorePythonLinguagem base para processamento de dados.Computer VisionMediaPipeMapeamento de Landmarks das mãos e Face Mesh.Image ProcessingOpenCVCaptura e manipulação de frames de vídeo.InterfaceHTML5 / CSS3Estrutura e estilização da interface adaptativa.ComunicaçãoFlask-SocketIOProtocolo WebSocket para latência ultrabaixa.
+## 🛠️ Tecnologias
+* **Backend:** Python 3.x, Flask, Flask-SocketIO
+* **IA:** MediaPipe (Hand Landmarking & Face Detection), OpenCV
+* **Frontend:** HTML5, CSS3, JavaScript (Socket.io-client)
+

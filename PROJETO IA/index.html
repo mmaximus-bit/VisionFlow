@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Experience 2026 - Touchless</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    
+    <style>
+        /* Estilos base do evento */
+        body { 
+            background: #0a0a0a; color: white; font-family: 'Segoe UI', sans-serif; 
+            margin: 0; padding: 0; text-align: center; overflow-x: hidden;
+        }
+        h1 { color: #f72585; text-shadow: 0 0 15px #f72585; font-size: 3em; margin-top: 50px; }
+        p { color: #ccc; font-size: 1.2em; max-width: 600px; margin: 20px auto; line-height: 1.6; }
+        
+        /* A câmera fica escondida, pois não precisamos nos ver, só controlar a tela */
+        #videoElement { display: none; }
+
+        /* O CURSOR VIRTUAL (A bolinha que segue sua mão) */
+        #cursor-virtual {
+            position: fixed; top: 50%; left: 50%;
+            width: 25px; height: 25px;
+            background-color: #00ffcc;
+            border-radius: 50%;
+            box-shadow: 0 0 20px #00ffcc;
+            pointer-events: none; /* Impede que o cursor bloqueie o clique nos botões embaixo dele */
+            transform: translate(-50%, -50%); /* Centraliza a bolinha no eixo */
+            z-index: 9999;
+            transition: transform 0.1s, background-color 0.2s;
+        }
+
+        /* Efeito visual quando a pessoa faz a pinça (clique) */
+        #cursor-virtual.clicando {
+            transform: translate(-50%, -50%) scale(0.5);
+            background-color: #f72585;
+            box-shadow: 0 0 30px #f72585;
+        }
+
+        /* Áreas interativas para testar o clique */
+        .painel { margin: 150px auto; padding: 50px; border: 2px solid #7b2cbf; border-radius: 20px; width: 60%; }
+        .btn-neon {
+            background: transparent; color: #fff; border: 2px solid #00ffcc;
+            padding: 20px 40px; font-size: 24px; border-radius: 10px; cursor: pointer;
+            box-shadow: 0 0 10px #00ffcc inset, 0 0 10px #00ffcc;
+            transition: 0.3s; margin: 20px;
+        }
+        .btn-neon:hover { background: #00ffcc; color: #000; }
+        
+        /* Divisores gigantes só para forçar a página a ter rolagem (scroll) */
+        .espaco-scroll { height: 800px; display: flex; align-items: center; justify-content: center; border-top: 1px dashed #333; }
+    </style>
+</head>
+<body>
+
+    <div id="cursor-virtual"></div>
+
+    <video id="videoElement" autoplay></video>
+
+    <header>
+        <h1>AI EXPERIENCE 2026</h1>
+        <p id="status">Levante a mão para a câmera para ativar o controle touchless...</p>
+    </header>
+
+    <div class="painel">
+        <h2>Selecione sua Trilha</h2>
+        <button class="btn-neon" onclick="alert('Você se inscreveu na trilha: PROGRAMAÇÃO C & JAVA!')">Trilha de Código</button>
+        <button class="btn-neon" onclick="alert('Você se inscreveu na trilha: IMPRESSÃO 3D!')">Trilha Maker</button>
+    </div>
+
+    <div class="espaco-scroll">
+        <h2 style="color: #555;">(Role para baixo usando sua mão ✋⬇️)</h2>
+    </div>
+
+    <div class="painel">
+        <h2>Mais Informações</h2>
+        <button class="btn-neon" onclick="alert('Bem-vindo à área de Startups!')">Ver Projetos e Startups</button>
+    </div>
+
+    <div class="espaco-scroll">
+        <h2 style="color: #555;">(Fim da Página)</h2>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

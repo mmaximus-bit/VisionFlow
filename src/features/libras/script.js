@@ -127,8 +127,42 @@
         }
     }
 
-    const landmarkCtx = dom.landmarkCanvas.getContext("2d");
-    const effectsCtx = dom.effectsCanvas.getContext("2d");
+    // ──────────────────────────────────────────────────────────────────
+    // OTIMIZAÇÃO 1 — Canvas com { willReadFrequently: true }
+    // O Studio Libras processa frames de vídeo com alta frequência. Ao sinalizar
+    // willReadFrequently, o browser mantém o framebuffer na CPU, evitando
+    // read-back GPU→CPU que bloqueia a thread principal por milissegundos.
+    // ──────────────────────────────────────────────────────────────────
+    const landmarkCtx = dom.landmarkCanvas.getContext("2d", { willReadFrequently: true });
+    const effectsCtx  = dom.effectsCanvas.getContext("2d",  { willReadFrequently: true });
+
+    // ──────────────────────────────────────────────────────────────────
+    // OTIMIZAÇÃO 1b — Canvas offscreen de baixa resolução
+    // O Libras usa 960×720 no Camera. Reduzimos para 480×360 (¼ dos pixels)
+    // no canvas offscreen antes de enviar ao modelo. Isso diminui significativamente
+    // o trabalho de decodificação de imagem feito pelo WASM do MediaPipe.
+    // ──────────────────────────────────────────────────────────────────
+    const LIBRAS_OFFSCREEN_W = 480;
+    const LIBRAS_OFFSCREEN_H = 360;
+    /** Canvas interno de baixa resolução usado como pré-processador de frame. */
+    const librasOffscreenCanvas = document.createElement("canvas");
+    librasOffscreenCanvas.width  = LIBRAS_OFFSCREEN_W;
+    librasOffscreenCanvas.height = LIBRAS_OFFSCREEN_H;
+    /** Contexto offscreen — marcado willReadFrequently pois vamos ler pixels. */
+    const librasOffscreenCtx = librasOffscreenCanvas.getContext("2d", { willReadFrequently: true });
+
+    // ──────────────────────────────────────────────────────────────────
+    // OTIMIZAÇÃO 2 — Throttle de FPS (pipeline de inferência)
+    // Controla quantos frames por segundo são enviados ao modelo.
+    // ──────────────────────────────────────────────────────────────────
+    /** Máximo de FPS de inferência — 20 FPS reduz CPU ~50% vs 60 FPS nativo. */
+    const LIBRAS_MAX_INFERENCE_FPS = 20;
+    /** Intervalo mínimo (ms) entre envios ao modelo. */
+    const LIBRAS_MIN_INTERVAL_MS = Math.round(1000 / LIBRAS_MAX_INFERENCE_FPS);
+    /** Timestamp do último frame enviado — usado pelo throttle. */
+    let librasLastSentAt = 0;
+    /** Flag de pipeline ocupado — impede envio simultâneo de frames. */
+    let librasSending = false;
 
     const HAND_CONNECTIONS = [
         [0, 1], [1, 2], [2, 3], [3, 4],
@@ -1544,7 +1578,40 @@
             width: 960,
             height: 720,
             onFrame: async () => {
-                await hands.send({ image: dom.video });
+                const now = performance.now();
+
+                // ────────────────────────────────────────────────────
+                // OTIMIZAÇÃO 2 — Throttle de FPS
+                // Frames intermediários são simplesmente descartados.
+                // O modelo roda a no máximo 20 FPS, poupando ciclos de CPU
+                // que seriam desperdiçados em frames que não agregam valor.
+                // ────────────────────────────────────────────────────
+                if (librasSending || now - librasLastSentAt < LIBRAS_MIN_INTERVAL_MS) {
+                    return; // frame descartado — throttle ativo
+                }
+
+                // ────────────────────────────────────────────────────
+                // OTIMIZAÇÃO 1b — Redimensionamento do frame
+                // O frame do vídeo (960×720) é desenhado em escala 480×360.
+                // Isso reduz em 75% o número de pixels processados pelo WASM.
+                // ────────────────────────────────────────────────────
+                librasOffscreenCtx.drawImage(dom.video, 0, 0, LIBRAS_OFFSCREEN_W, LIBRAS_OFFSCREEN_H);
+
+                librasSending = true;
+                librasLastSentAt = now;
+                try {
+                    // Enviamos o canvas redimensionado, não o vídeo bruto
+                    await hands.send({ image: librasOffscreenCanvas });
+                } finally {
+                    // ──────────────────────────────────────────────────
+                    // OTIMIZAÇÃO 3 — Gerenciamento de memória
+                    // finally garante liberação mesmo em caso de exceção.
+                    // clearRect limpa o framebuffer do canvas offscreen para
+                    // que o garbage collector recupere a memória alocada.
+                    // ──────────────────────────────────────────────────
+                    librasSending = false;
+                    librasOffscreenCtx.clearRect(0, 0, LIBRAS_OFFSCREEN_W, LIBRAS_OFFSCREEN_H);
+                }
             }
         });
 

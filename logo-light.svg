@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40">
+  <defs>
+    <linearGradient id="dotGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1f6f78" />
+      <stop offset="100%" stop-color="#f4a261" />
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="blur" />
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.4"/>
+      </feComponentTransfer>
+      <feMerge> 
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@800&amp;display=swap');
+      .text {
+        font-family: 'Outfit', sans-serif;
+        font-weight: 800;
+        font-size: 20px;
+        fill: #0f172a;
+        letter-spacing: -0.02em;
+      }
+    </style>
+  </defs>
+  <circle cx="20" cy="20" r="6" fill="url(#dotGrad)" filter="url(#glow)" />
+  <text x="36" y="27" class="text">VisionFlow 2.0</text>
+</svg>

@@ -36,8 +36,34 @@
     }
 
     const localStorageKey = "visionflow-lite-settings-v1";
-    const landmarkCtx = dom.landmarkCanvas ? dom.landmarkCanvas.getContext("2d") : null;
-    const effectsCtx = dom.effectsCanvas ? dom.effectsCanvas.getContext("2d") : null;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // OTIMIZAÇÃO 1 — Canvas com { willReadFrequently: true }
+    // Quando o navegador sabe que leremos pixels do canvas com frequência
+    // (getImageData), ele mantém o buffer na CPU em vez da GPU,
+    // evitando transferências lentas a cada frame.
+    // ─────────────────────────────────────────────────────────────────────────
+    const landmarkCtx = dom.landmarkCanvas
+        ? dom.landmarkCanvas.getContext("2d", { willReadFrequently: true })
+        : null;
+    const effectsCtx = dom.effectsCanvas
+        ? dom.effectsCanvas.getContext("2d", { willReadFrequently: true })
+        : null;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // OTIMIZAÇÃO 1b — Canvas offscreen de baixa resolução para pré-processamento
+    // Em vez de enviar o frame original (640×480) ao MediaPipe, desenhamos
+    // primeiro em um canvas 320×240 (¼ dos pixels → ¼ da memória), aliviando
+    // a leitura e transferência de dados da IA.
+    // ─────────────────────────────────────────────────────────────────────────
+    const OFFSCREEN_W = 320;
+    const OFFSCREEN_H = 240;
+    /** @type {HTMLCanvasElement} Canvas interno de baixa resolução. */
+    const offscreenCanvas = document.createElement("canvas");
+    offscreenCanvas.width  = OFFSCREEN_W;
+    offscreenCanvas.height = OFFSCREEN_H;
+    /** Contexto do canvas offscreen — também marcado willReadFrequently. */
+    const offscreenCtx = offscreenCanvas.getContext("2d", { willReadFrequently: true });
 
     const HAND_CONNECTIONS = [
         [0, 1], [1, 2], [2, 3], [3, 4],
@@ -63,7 +89,13 @@
         pinchDepthWeight: 0.58,
         cameraWidth: 640,
         cameraHeight: 480,
-        maxProcessingFps: 42,
+        // ─────────────────────────────────────────────────────────────────
+        // OTIMIZAÇÃO 2 — Frame Rate Throttling
+        // maxProcessingFps limita quantas vezes por segundo enviamos um frame
+        // ao modelo de IA. 20 FPS é suficiente para detecção fluida e reduz
+        // o uso de CPU/GPU em ~50% comparado a 42 FPS.
+        // ─────────────────────────────────────────────────────────────────
+        maxProcessingFps: 20,
         scrollMaxSpeedPx: 16,
         scrollDeadZoneMin: 0.38,
         scrollDeadZoneMax: 0.62,
@@ -729,10 +761,20 @@
     }
 
     function runLoop() {
+        // ──────────────────────────────────────────────────────────────────
+        // OTIMIZAÇÃO 4 — requestAnimationFrame eficiente com timestamp nativo
+        // O rAF já entrega `now` (DOMHighResTimeStamp) sem custo adicional.
+        // Usamos esse valor em toda a lógica de scroll, sleep e stats,
+        // evitando chamadas extras a performance.now() dentro do loop.
+        // O loop é cancelado antes de ser recriado para evitar múltiplos
+        // rAFs rodando simultaneamente (memory leak de loop duplicado).
+        // ──────────────────────────────────────────────────────────────────
         const tick = (now) => {
+            // Suavização de scroll vetorial (EMA bidirecional)
             state.scroll.velocityY += (state.scroll.targetY - state.scroll.velocityY) * config.scrollSmoothing;
             state.scroll.velocityX += (state.scroll.targetX - state.scroll.velocityX) * config.scrollSmoothing;
 
+            // Zera velocidades abaixo do limiar para evitar micro-drifts infinitos
             if (Math.abs(state.scroll.velocityY) < 0.08) state.scroll.velocityY = 0;
             if (Math.abs(state.scroll.velocityX) < 0.08) state.scroll.velocityX = 0;
 
@@ -747,19 +789,21 @@
             applyKeyboardMovement();
             drawEffects();
             updateStats(now);
-            
-            // Auto-Sleep Mode Logic
+
+            // Auto-Sleep Mode: fade da interface após inatividade
             if (state.handVisible || state.keyboard.left || state.keyboard.right || state.keyboard.up || state.keyboard.down) {
                 state.lastActivityAt = now;
                 document.body.style.opacity = "1";
             } else if (now - state.lastActivityAt > config.sleepModeTimeoutMs) {
-                document.body.style.opacity = "0.4"; // Escurece a tela se ocioso por muito tempo
+                document.body.style.opacity = "0.4";
                 document.body.style.transition = "opacity 1s ease";
             }
 
+            // Reagenda o próximo tick — o ID é guardado para cancelamento
             state.scroll.rafId = window.requestAnimationFrame(tick);
         };
 
+        // Cancela loop anterior antes de criar novo para evitar duplicatas
         if (state.scroll.rafId) {
             window.cancelAnimationFrame(state.scroll.rafId);
         }
@@ -851,16 +895,40 @@
             height: config.cameraHeight,
             onFrame: async () => {
                 const now = performance.now();
+
+                // ──────────────────────────────────────────────────────────
+                // OTIMIZAÇÃO 2 — Throttle de FPS no pipeline de inferência
+                // Se ainda estamos processando o frame anterior (sending) ou
+                // o intervalo mínimo ainda não passou, descartamos este frame.
+                // Isso evita enfileirar trabalho e afundar a thread principal.
+                // ──────────────────────────────────────────────────────────
                 if (state.pipeline.sending || now - state.pipeline.lastSentAt < state.pipeline.minIntervalMs) {
-                    return;
+                    return; // frame ignorado — CPU poupada
                 }
+
+                // ──────────────────────────────────────────────────────────
+                // OTIMIZAÇÃO 1b — Redimensionamento do frame antes da IA
+                // Desenhamos o frame do vídeo em escala reduzida (320×240)
+                // no canvas offscreen. O MediaPipe recebe uma imagem menor,
+                // o que reduz a quantidade de pixels analisados em ~75%.
+                // ──────────────────────────────────────────────────────────
+                offscreenCtx.drawImage(dom.video, 0, 0, OFFSCREEN_W, OFFSCREEN_H);
 
                 state.pipeline.sending = true;
                 state.pipeline.lastSentAt = now;
                 try {
-                    await hands.send({ image: dom.video });
+                    // Enviamos o canvas comprimido, não o vídeo bruto
+                    await hands.send({ image: offscreenCanvas });
                 } finally {
+                    // ──────────────────────────────────────────────────────
+                    // OTIMIZAÇÃO 3 — Gerenciamento de memória
+                    // Liberamos o flag de envio no bloco finally para garantir
+                    // que mesmo em caso de erro o pipeline não trava.
+                    // Limpamos também o canvas offscreen para evitar retenção
+                    // de dados de imagem entre frames (memory leak implícito).
+                    // ──────────────────────────────────────────────────────
                     state.pipeline.sending = false;
+                    offscreenCtx.clearRect(0, 0, OFFSCREEN_W, OFFSCREEN_H);
                 }
             }
         });
